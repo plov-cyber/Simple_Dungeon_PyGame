@@ -124,6 +124,7 @@ while running:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONUP or event.type == pygame.KEYUP:
+                titre_y = WIN_HEIGHT
                 now_screen = MENU_SCREEN
 
         about_screen.blit(BACKGROUND, (0, 0))
