@@ -32,7 +32,7 @@ class Button(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = WIN_WIDTH // 2 - 250, y
         self.title = txt
-        self.text = pygame.font.SysFont('comicsansms', 40, bold=True).render(txt, 1, pygame.Color('white'))
+        self.text = BUTTON_FONT.render(txt, 1, pygame.Color('white'))
 
     def update(self):
         """Меняет фоновое изображение кнопки при наведении на неё."""
@@ -53,6 +53,8 @@ ABOUT_SCREEN = 'about_screen'
 now_screen = MENU_SCREEN
 with open('sources/titres.txt', encoding='utf-8') as f:
     TITRES_TEXT = [i.strip() for i in f.readlines()]
+BUTTON_FONT = pygame.font.SysFont('comicsansms', 40, bold=True)
+TITRES_FONT = pygame.font.SysFont('comicsansms', 50)
 
 # Инициализация экрана, установка оглавление и иконки приложения.
 screen = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
@@ -132,7 +134,7 @@ while running:
         about_screen.blit(BACKGROUND, (0, 0))
         text_y = 0
         for s in TITRES_TEXT:
-            text = pygame.font.SysFont('comicsansms', 50).render(s.strip(), 1, pygame.Color('white'))
+            text = TITRES_FONT.render(s.strip(), 1, pygame.Color('white'))
             about_screen.blit(text, ((WIN_WIDTH - text.get_width()) // 2, titre_y + text_y))
             text_y += text.get_height()
         titre_y -= 1
