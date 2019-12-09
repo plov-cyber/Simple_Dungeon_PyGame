@@ -127,7 +127,13 @@ while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.MOUSEBUTTONUP or event.type == pygame.KEYUP:
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 5:
+                    titre_y -= 30
+                else:
+                    titre_y = WIN_HEIGHT
+                    now_screen = MENU_SCREEN
+            elif event.type == pygame.KEYUP:
                 titre_y = WIN_HEIGHT
                 now_screen = MENU_SCREEN
 
