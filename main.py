@@ -7,8 +7,26 @@ pygame.init()
 
 def terminate():
     """Выход из игры"""
+
     pygame.quit()
     exit(0)
+
+
+def load_sound(type, name):
+    """Загружает звук или музыку. Использует type для определения типа(музыка, звук)."""
+
+    fullname = os.path.join('sounds', name)
+    sound = None
+    try:
+        if type == 0:
+            pygame.mixer_music.load(fullname)
+        elif type == 1:
+            sound = pygame.mixer.Sound(fullname)
+    except pygame.error:
+        print('Звук', name, 'отсутствует.')
+        exit(0)
+    if sound:
+        return sound
 
 
 def load_image(name, colorkey=None):
@@ -31,7 +49,8 @@ def load_image(name, colorkey=None):
 
 class Hero(pygame.sprite.Sprite):
     """Класс главного героя. Принимает координаты."""
-    def __init__(self, group):
+
+    def __init__(self, screen, group, x, y):
         super().__init__(group)
 
 
@@ -82,6 +101,12 @@ clock = pygame.time.Clock()
 BTN_IMGS = [load_image('btn.png', pygame.Color('white')), load_image('btn_act.png', pygame.Color('white'))]
 BACKGROUND = load_image('background.png')
 
+# Загрузка звуков и музыки.
+load_sound(0, 'title_menu_music.mp3')
+pygame.mixer_music.set_volume(0.3)
+pygame.mixer_music.play(-1)
+btn_sound = load_sound(1, 'btn_sound.wav')
+
 # Экран с титрами(О НАС).
 about_screen = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 about_screen.blit(BACKGROUND, (0, 0))
@@ -122,11 +147,13 @@ while running:
     # Код для главного меню игры.
     if now_screen == MENU_SCREEN:
 
+        pygame.mixer_music.unpause()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             for btn in menu_buttons:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
+                    btn_sound.play()
                     if btn.title == 'ВЫЙТИ':
                         terminate()
                     elif btn.title == 'О НАС':
@@ -152,6 +179,7 @@ while running:
     # Код для экрана с титрами.
     elif now_screen == ABOUT_SCREEN:
 
+        pygame.mixer_music.unpause()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminate()
@@ -170,9 +198,15 @@ while running:
     # Код для экрана выбора уровня
     elif now_screen == LVL_CH_SCREEN:
 
+        pygame.mixer_music.unpause()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminate()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                now_screen = MENU_SCREEN
+            for btn in level_buttons:
+                if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
+                    btn_sound.play()
 
         l_ch_screen.blit(BACKGROUND, (0, 0))
         l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 10))
