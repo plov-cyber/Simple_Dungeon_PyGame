@@ -1,6 +1,7 @@
 # Импорт необходимых библиотек
 import os
 import pygame
+import random
 
 pygame.init()
 
@@ -47,11 +48,83 @@ def load_image(name, colorkey=None):
     return image
 
 
+class Cloud(pygame.sprite.Sprite):
+    def __init__(self, group):
+        super().__init__(group)
+        self.image = random.choice(CLOUD_IMGS)
+        self.rect = self.image.get_rect()
+        self.rect.x = random.choice([6144, -self.image.get_width()])
+        self.rect.y = random.randint(0, 150)
+        self.vx = random.choice([-1, 1])
+
+    def update(self):
+        if self.rect.x < -self.image.get_width() or self.rect.x > 6144:
+            self.kill()
+        else:
+            self.rect.x += self.vx
+
+
+class Level:
+    def __init__(self, image, enemies, platforms):
+        self.image = image
+        self.enemies = enemies
+        self.platforms = platforms
+
+    def play_level(self):
+        lvl_sc.blit(self.image, (0, 0))
+
+
+class AnimatedSprite(pygame.sprite.Sprite):
+    """Класс анимированного спрайта."""
+
+    def __init__(self, group, sheet, columns, rows, x, y):
+        super().__init__(group)
+        self.frames = []
+        self.cut_sheet(sheet, columns, rows)
+        self.cur_frame = 0
+        self.image = self.frames[self.cur_frame]
+        self.rect = self.rect.move(x, y)
+
+    def cut_sheet(self, sheet, columns, rows):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                self.frames.append(sheet.subsurface(pygame.Rect(
+                    frame_location, self.rect.size)))
+
+    def update(self):
+        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+        self.image = self.frames[self.cur_frame]
+
+
 class Hero(pygame.sprite.Sprite):
     """Класс главного героя. Принимает координаты."""
 
-    def __init__(self, screen, group, x, y):
+    def __init__(self, group, x, y):
         super().__init__(group)
+        self.image = pygame.transform.scale(load_image('knight.png'), (30, 80))
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = x, y
+        self.turn = False
+        self.jump = False
+        self.moving = False
+
+    def move(self, x, y):
+        global level_x
+        if x < self.rect.x and not self.turn:
+            self.image = pygame.transform.flip(self.image, 1, 0)
+            self.turn = True
+        elif x > self.rect.x and self.turn:
+            self.image = pygame.transform.flip(self.image, 1, 0)
+            self.turn = False
+
+        if self.rect.x >= 655 and 0 >= level_x:
+            level_x -= x - self.rect.x
+        else:
+            level_x = 0
+            self.rect.x, self.rect.y = x, y
 
 
 class Button(pygame.sprite.Sprite):
@@ -84,11 +157,18 @@ FPS = 60
 MENU_SCREEN = 'menu_screen'
 ABOUT_SCREEN = 'about_screen'
 LVL_CH_SCREEN = 'level_choice_screen'
+LVL = 'level_screen'
 now_screen = MENU_SCREEN
 with open('sources/titres.txt', encoding='utf-8') as f:
     TITRES_TEXT = [i.strip() for i in f.readlines()]
 BUTTON_FONT = pygame.font.SysFont('comicsansms', 40, bold=True)
 TITRES_FONT = pygame.font.SysFont('comicsansms', 50)
+MENU_BTN_TITLES = ['НАЧАТЬ ИГРУ', 'О НАС', 'ВЫЙТИ']
+LEVEL_BTN_TITLES = ['Уровень 1', 'Уровень 2', 'Уровень 3']
+menu_buttons = pygame.sprite.Group()
+level_buttons = pygame.sprite.Group()
+hero_group = pygame.sprite.Group()
+clouds = pygame.sprite.Group()
 
 # Инициализация экрана, установка оглавление и иконки приложения.
 screen = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
@@ -100,6 +180,8 @@ clock = pygame.time.Clock()
 # Загрузка изображений.
 BTN_IMGS = [load_image('btn.png', pygame.Color('white')), load_image('btn_act.png', pygame.Color('white'))]
 BACKGROUND = load_image('background.png')
+CLOUD_IMGS = [load_image('cloud1.png', (95, 205, 228)), load_image('cloud2.png', (95, 205, 228)),
+              load_image('cloud3.png', (95, 205, 228))]
 
 # Загрузка звуков и музыки.
 load_sound(0, 'title_menu_music.mp3')
@@ -127,13 +209,20 @@ LVL_CH_TITLE = pygame.font.SysFont('comicsansms', 120, bold=True).render('Выб
                                                                          pygame.Color('black'))
 l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 5))
 
-SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen}
+# Уровень.
+lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
+level = None
+level_x = 0
+LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [], [])]
+ticks = 0
+
+# Главный герой.
+hero = Hero(hero_group, 5, 445)
+
+# Экраны.
+SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc}
 
 # Инициализация кнопок и объединение их в группы.
-MENU_BTN_TITLES = ['НАЧАТЬ ИГРУ', 'О НАС', 'ВЫЙТИ']
-menu_buttons = pygame.sprite.Group()
-LEVEL_BTN_TITLES = ['Уровень 1', 'Уровень 2', 'Уровень 3']
-level_buttons = pygame.sprite.Group()
 for i in range(3):
     Button(menu_screen, menu_buttons, i * 150 + 250, MENU_BTN_TITLES[i], pygame.Color('white'))
     Button(l_ch_screen, level_buttons, i * 150 + 250, LEVEL_BTN_TITLES[i], pygame.Color('black'))
@@ -202,16 +291,49 @@ while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminate()
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
                 now_screen = MENU_SCREEN
             for btn in level_buttons:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
                     btn_sound.play()
+                    if btn.title == 'Уровень 1':
+                        level = 1
+                        now_screen = LVL
+                    elif btn.title == 'Уровень 2':
+                        pass
+                    elif btn.title == 'Уровень 3':
+                        pass
 
         l_ch_screen.blit(BACKGROUND, (0, 0))
         l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 10))
         level_buttons.draw(l_ch_screen)
         level_buttons.update()
+
+    # Код для уровней.
+    elif now_screen == LVL:
+
+        pygame.mixer_music.pause()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+            elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
+                now_screen = LVL_CH_SCREEN
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_RIGHT]:
+            pass
+        if keys[pygame.K_LEFT]:
+            pass
+
+        lvl_sc.blit(LEVELS[level - 1].image, (level_x, -500))
+        hero_group.draw(lvl_sc)
+        if ticks == random.randint(0, 75):
+            Cloud(clouds)
+        clouds.draw(lvl_sc)
+        clouds.update()
+        ticks += 1
+        if ticks > 75:
+            ticks = 0
 
     # Обновление экрана
     screen.blit(SCREENS[now_screen], (0, 0))
