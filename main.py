@@ -49,6 +49,8 @@ def load_image(name, colorkey=None):
 
 
 class Cloud(pygame.sprite.Sprite):
+    """Класс облаков."""
+
     def __init__(self, group):
         super().__init__(group)
         self.image = random.choice(CLOUD_IMGS)
@@ -65,6 +67,8 @@ class Cloud(pygame.sprite.Sprite):
 
 
 class Level:
+    """Класс уровня."""
+
     def __init__(self, image, enemies, platforms):
         self.image = image
         self.enemies = enemies
