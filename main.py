@@ -48,11 +48,24 @@ def load_image(name, colorkey=None):
     return image
 
 
+class Platform(pygame.sprite.Sprite):
+    """Класс платформ"""
+
+    def __init__(self, x, y):
+        """Инициализация платформы."""
+        super().__init__(platforms, all_sprites)
+        self.image = PL_IMG
+        self.rect = self.image.get_rect()
+        self.pos0 = (x, y)
+        self.rect.x, self.rect.y = x, y
+
+
 class Cloud(pygame.sprite.Sprite):
     """Класс облаков."""
 
-    def __init__(self, group):
-        super().__init__(group)
+    def __init__(self):
+        """Инициализация облака."""
+        super().__init__(clouds, all_sprites)
         self.image = random.choice(CLOUD_IMGS)
         self.rect = self.image.get_rect()
         self.rect.x = random.choice([6144, -self.image.get_width()])
@@ -60,28 +73,39 @@ class Cloud(pygame.sprite.Sprite):
         self.vx = random.choice([-1, 1])
 
     def update(self):
+        """Обновление координат облака."""
         if self.rect.x < -self.image.get_width() or self.rect.x > 6144:
             self.kill()
         else:
             self.rect.x += self.vx
 
 
-class Level:
+class Level(pygame.sprite.Sprite):
     """Класс уровня."""
 
     def __init__(self, image, enemies, platforms):
+        """Инициализация уровня."""
+        super().__init__(level, all_sprites)
         self.image = image
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = 0, -500
         self.enemies = enemies
         self.platforms = platforms
 
-    def play_level(self):
-        lvl_sc.blit(self.image, (0, 0))
+    def update(self):
+        """Обновление всех спрайтов уровня."""
+        if 625 <= hero.x <= 5489:
+            self.rect.x = -(hero.x - hero.rect.x)
+
+        for pl in self.platforms:
+            pl.rect.x = pl.pos0[0] + self.rect.x
 
 
 class AnimatedSprite(pygame.sprite.Sprite):
     """Класс анимированного спрайта."""
 
     def __init__(self, group, sheet, columns, rows, x, y):
+        """Инициализация анимированного спрайта"""
         super().__init__(group)
         self.frames = []
         self.cut_sheet(sheet, columns, rows)
@@ -90,6 +114,7 @@ class AnimatedSprite(pygame.sprite.Sprite):
         self.rect = self.rect.move(x, y)
 
     def cut_sheet(self, sheet, columns, rows):
+        """Разрезание большой картинки на маленькие."""
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
                                 sheet.get_height() // rows)
         for j in range(rows):
@@ -99,6 +124,7 @@ class AnimatedSprite(pygame.sprite.Sprite):
                     frame_location, self.rect.size)))
 
     def update(self):
+        """Обновление картинки для анимацци"""
         self.cur_frame = (self.cur_frame + 1) % len(self.frames)
         self.image = self.frames[self.cur_frame]
 
@@ -107,34 +133,50 @@ class Hero(pygame.sprite.Sprite):
     """Класс главного героя. Принимает координаты."""
 
     def __init__(self, group, x, y):
+        """Инициализация персонажа"""
         super().__init__(group)
         self.image = pygame.transform.scale(load_image('knight.png'), (30, 80))
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = x, y
+        self.x = x
+        self.y0 = y
         self.turn = False
         self.jump = False
-        self.moving = False
+        self.jump_height = 40
 
     def move(self, x, y):
+        """Движение персонажа."""
         global level_x
-        if x < self.rect.x and not self.turn:
+        if x < self.x and not self.turn:
             self.image = pygame.transform.flip(self.image, 1, 0)
             self.turn = True
-        elif x > self.rect.x and self.turn:
+        elif x > self.x and self.turn:
             self.image = pygame.transform.flip(self.image, 1, 0)
             self.turn = False
 
-        if self.rect.x >= 655 and 0 >= level_x:
-            level_x -= x - self.rect.x
-        else:
-            level_x = 0
-            self.rect.x, self.rect.y = x, y
+        if 6114 >= x >= 0:
+            self.x = x
+            if 0 <= self.x <= 625:
+                self.rect.x = self.x
+            elif 5489 <= self.x <= 6114:
+                self.rect.x = (self.x + 256) % 1280
+
+    def update(self):
+        """Обновление координат при прыжке."""
+        if self.jump:
+            if self.rect.y > self.y0 - self.jump_height:
+                self.rect.y -= 3
+            else:
+                self.jump = False
+        elif self.rect.y < self.y0:
+            self.rect.y += 3
 
 
 class Button(pygame.sprite.Sprite):
     """Класс кнопки. Принимает значение ординаты y, текст и цвет текста самой кнопки."""
 
     def __init__(self, screen, group, y, txt, txt_color):
+        """Инициализация экземпляра."""
         super().__init__(group)
         self.color = txt_color
         self.screen = screen
@@ -172,7 +214,10 @@ LEVEL_BTN_TITLES = ['Уровень 1', 'Уровень 2', 'Уровень 3']
 menu_buttons = pygame.sprite.Group()
 level_buttons = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
+all_sprites = pygame.sprite.Group()
+level = pygame.sprite.Group()
 clouds = pygame.sprite.Group()
+platforms = pygame.sprite.Group()
 
 # Инициализация экрана, установка оглавление и иконки приложения.
 screen = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
@@ -186,6 +231,7 @@ BTN_IMGS = [load_image('btn.png', pygame.Color('white')), load_image('btn_act.pn
 BACKGROUND = load_image('background.png')
 CLOUD_IMGS = [load_image('cloud1.png', (95, 205, 228)), load_image('cloud2.png', (95, 205, 228)),
               load_image('cloud3.png', (95, 205, 228))]
+PL_IMG = pygame.transform.scale(load_image('platform.png', (95, 205, 228)), (54, 16))
 
 # Загрузка звуков и музыки.
 load_sound(0, 'title_menu_music.mp3')
@@ -215,9 +261,10 @@ l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 5))
 
 # Уровень.
 lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
-level = None
+l_num = None
 level_x = 0
-LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [], [])]
+LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [],
+                [Platform(2306, 496), Platform(0, 0), Platform(0, 0)])]
 ticks = 0
 
 # Главный герой.
@@ -301,7 +348,7 @@ while running:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
                     btn_sound.play()
                     if btn.title == 'Уровень 1':
-                        level = 1
+                        l_num = 1
                         now_screen = LVL
                     elif btn.title == 'Уровень 2':
                         pass
@@ -324,16 +371,21 @@ while running:
                 now_screen = LVL_CH_SCREEN
 
         keys = pygame.key.get_pressed()
+        if keys[pygame.K_UP] and hero.rect.y == hero.y0:
+            hero.jump = True
         if keys[pygame.K_RIGHT]:
-            pass
+            hero.move(hero.x + 10, hero.rect.y)
         if keys[pygame.K_LEFT]:
-            pass
+            hero.move(hero.x - 10, hero.rect.y)
 
-        lvl_sc.blit(LEVELS[level - 1].image, (level_x, -500))
+        level.draw(lvl_sc)
+        platforms.draw(lvl_sc)
         hero_group.draw(lvl_sc)
         if ticks == random.randint(0, 75):
-            Cloud(clouds)
+            Cloud()
         clouds.draw(lvl_sc)
+        hero_group.update()
+        level.update()
         clouds.update()
         ticks += 1
         if ticks > 75:
