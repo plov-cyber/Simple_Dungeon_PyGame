@@ -68,16 +68,16 @@ class Cloud(pygame.sprite.Sprite):
         super().__init__(clouds, all_sprites)
         self.image = random.choice(CLOUD_IMGS)
         self.rect = self.image.get_rect()
-        self.rect.x = random.choice([6144, -self.image.get_width()])
+        self.rect.x = random.choice([now_level.rect.x - self.rect.width, now_level.rect.x + 6144])
         self.rect.y = random.randint(0, 150)
-        self.vx = random.choice([-1, 1])
+        self.vx = random.choice([-2, -1, 1, 2])
 
     def update(self):
         """Обновление координат облака."""
-        if self.rect.x < -self.image.get_width() or self.rect.x > 6144:
+        if self.rect.x < now_level.rect.x - self.rect.width or self.rect.x > 6144:
             self.kill()
         else:
-            self.rect.x += self.vx
+            self.rect.x += self.vx - now_level.diff
 
 
 class Level(pygame.sprite.Sprite):
@@ -87,6 +87,7 @@ class Level(pygame.sprite.Sprite):
         """Инициализация уровня."""
         super().__init__(level, all_sprites)
         self.image = image
+        self.diff = 0
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = 0, -500
         self.enemies = enemies
@@ -95,7 +96,10 @@ class Level(pygame.sprite.Sprite):
     def update(self):
         """Обновление всех спрайтов уровня."""
         if 625 <= hero.x <= 5489:
+            self.diff = hero.x - hero.rect.x + self.rect.x
             self.rect.x = -(hero.x - hero.rect.x)
+        else:
+            self.diff = 0
 
         for pl in self.platforms:
             pl.rect.x = pl.pos0[0] + self.rect.x
@@ -261,8 +265,8 @@ l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 5))
 
 # Уровень.
 lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
-l_num = None
 level_x = 0
+now_level = None
 LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [],
                 [Platform(2306, 496), Platform(0, 0), Platform(0, 0)])]
 ticks = 0
@@ -354,7 +358,7 @@ while running:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
                     btn_sound.play()
                     if btn.title == 'Уровень 1':
-                        l_num = 1
+                        now_level = LEVELS[0]
                         now_screen = LVL
                     elif btn.title == 'Уровень 2':
                         pass
