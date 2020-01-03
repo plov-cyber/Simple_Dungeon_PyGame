@@ -360,6 +360,7 @@ while running:
                     if btn.title == 'Уровень 1':
                         now_level = LEVELS[0]
                         now_screen = LVL
+                        pygame.mouse.set_visible(False)
                     elif btn.title == 'Уровень 2':
                         pass
                     elif btn.title == 'Уровень 3':
@@ -378,6 +379,7 @@ while running:
             if event.type == pygame.QUIT:
                 terminate()
             elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
+                pygame.mouse.set_visible(True)
                 now_screen = LVL_CH_SCREEN
 
         keys = pygame.key.get_pressed()
