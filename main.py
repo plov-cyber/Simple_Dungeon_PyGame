@@ -54,7 +54,7 @@ class Platform(pygame.sprite.Sprite):
     def __init__(self, x, y):
         """Инициализация платформы."""
         super().__init__(platforms, all_sprites)
-        self.image = PL_IMG
+        self.image = PLATF_IMG
         self.rect = self.image.get_rect()
         self.pos0 = (x, y)
         self.rect.x, self.rect.y = x, y
@@ -139,18 +139,20 @@ class Hero(pygame.sprite.Sprite):
     def __init__(self, group, x, y):
         """Инициализация персонажа"""
         super().__init__(group)
-        self.image = pygame.transform.scale(load_image('knight.png'), (30, 80))
+        self.image = PLAYER_IMG
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = x, y
         self.x = x
-        self.y0 = y
+        self.y0 = Y0
         self.turn = False
         self.jump = False
-        self.jump_height = 40
+        self.platform = False
+        self.jump_height = 50
+        self.jump_count = 0
+        self.vx = 5
 
     def move(self, x, y):
         """Движение персонажа."""
-        global level_x
         if x < self.x and not self.turn:
             self.image = pygame.transform.flip(self.image, 1, 0)
             self.turn = True
@@ -166,14 +168,32 @@ class Hero(pygame.sprite.Sprite):
                 self.rect.x = (self.x + 256) % 1280
 
     def update(self):
-        """Обновление координат при прыжке."""
-        if self.jump:
-            if self.rect.y > self.y0 - self.jump_height:
-                self.rect.y -= 3
+        """Обновление координат персонажа при взаимодействии с ним."""
+        global now_screen
+        self.platform = False
+        for platform in now_level.platforms:
+            if platform.rect.x < self.rect.x + self.rect.width \
+                    and platform.rect.x + platform.rect.width > self.rect.x \
+                    and self.rect.y + self.rect.height <= platform.rect.y:
+                self.y0 = platform.rect.y - self.rect.height
+                self.platform = True
+        if not self.platform:
+            if 2280 < self.x < 2550:
+                self.y0 = 530
             else:
-                self.jump = False
-        elif self.rect.y < self.y0:
+                self.y0 = Y0
+                now_screen = GAME_OVER
+
+        if self.jump and self.jump_count + 3 < self.jump_height:
+            self.rect.y -= 3
+            self.jump_count += 3
+        elif not self.jump and self.rect.y <= self.y0 - 3:
             self.rect.y += 3
+            if self.y0 - self.rect.y < 3:
+                self.rect.y = self.y0
+        else:
+            self.jump = False
+            self.jump_count = 0
 
 
 class Button(pygame.sprite.Sprite):
@@ -204,10 +224,12 @@ class Button(pygame.sprite.Sprite):
 WIN_WIDTH = 1280
 WIN_HEIGHT = 720
 FPS = 60
+Y0 = 445
 MENU_SCREEN = 'menu_screen'
 ABOUT_SCREEN = 'about_screen'
 LVL_CH_SCREEN = 'level_choice_screen'
 LVL = 'level_screen'
+GAME_OVER = 'game_over'
 now_screen = MENU_SCREEN
 with open('sources/titres.txt', encoding='utf-8') as f:
     TITRES_TEXT = [i.strip() for i in f.readlines()]
@@ -235,7 +257,8 @@ BTN_IMGS = [load_image('btn.png', pygame.Color('white')), load_image('btn_act.pn
 BACKGROUND = load_image('background.png')
 CLOUD_IMGS = [load_image('cloud1.png', (95, 205, 228)), load_image('cloud2.png', (95, 205, 228)),
               load_image('cloud3.png', (95, 205, 228))]
-PL_IMG = pygame.transform.scale(load_image('platform.png', (95, 205, 228)), (54, 16))
+PLATF_IMG = pygame.transform.scale(load_image('platform.png', (95, 205, 228)), (54, 16))
+PLAYER_IMG = pygame.transform.scale(load_image('knight.png'), (30, 80))
 
 # Загрузка звуков и музыки.
 load_sound(0, 'title_menu_music.mp3')
@@ -268,14 +291,17 @@ lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 level_x = 0
 now_level = None
 LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [],
-                [Platform(2306, 496), Platform(0, 0), Platform(0, 0)])]
+                [Platform(2306, 496), Platform(2405, 476), Platform(2497, 454)])]
 ticks = 0
+
+# Экран для game over'а.
+game_over_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 
 # Главный герой.
 hero = Hero(hero_group, 5, 445)
 
 # Экраны.
-SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc}
+SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc, GAME_OVER: game_over_sc}
 
 # Инициализация кнопок и объединение их в группы.
 for i in range(3):
@@ -357,10 +383,10 @@ while running:
             for btn in level_buttons:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
                     btn_sound.play()
+                    pygame.mouse.set_visible(False)
                     if btn.title == 'Уровень 1':
                         now_level = LEVELS[0]
                         now_screen = LVL
-                        pygame.mouse.set_visible(False)
                     elif btn.title == 'Уровень 2':
                         pass
                     elif btn.title == 'Уровень 3':
@@ -386,9 +412,9 @@ while running:
         if keys[pygame.K_UP] and hero.rect.y == hero.y0:
             hero.jump = True
         if keys[pygame.K_RIGHT]:
-            hero.move(hero.x + 10, hero.rect.y)
+            hero.move(hero.x + hero.vx, hero.rect.y)
         if keys[pygame.K_LEFT]:
-            hero.move(hero.x - 10, hero.rect.y)
+            hero.move(hero.x - hero.vx, hero.rect.y)
 
         level.draw(lvl_sc)
         platforms.draw(lvl_sc)
