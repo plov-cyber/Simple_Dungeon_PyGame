@@ -105,60 +105,34 @@ class Level(pygame.sprite.Sprite):
             pl.rect.x = pl.pos0[0] + self.rect.x
 
 
-class AnimatedSprite(pygame.sprite.Sprite):
-    """Класс анимированного спрайта."""
-
-    def __init__(self, group, sheet, columns, rows, x, y):
-        """Инициализация анимированного спрайта"""
-        super().__init__(group)
-        self.frames = []
-        self.cut_sheet(sheet, columns, rows)
-        self.cur_frame = 0
-        self.image = self.frames[self.cur_frame]
-        self.rect = self.rect.move(x, y)
-
-    def cut_sheet(self, sheet, columns, rows):
-        """Разрезание большой картинки на маленькие."""
-        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
-                                sheet.get_height() // rows)
-        for j in range(rows):
-            for i in range(columns):
-                frame_location = (self.rect.w * i, self.rect.h * j)
-                self.frames.append(sheet.subsurface(pygame.Rect(
-                    frame_location, self.rect.size)))
-
-    def update(self):
-        """Обновление картинки для анимацци"""
-        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
-        self.image = self.frames[self.cur_frame]
-
-
 class Hero(pygame.sprite.Sprite):
     """Класс главного героя. Принимает координаты."""
 
     def __init__(self, group, x, y):
         """Инициализация персонажа"""
         super().__init__(group)
-        self.image = PLAYER_IMG
+        self.image = PLAYER_IMGS[2]
+        self.img_count = 0
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = x, y
         self.x = x
         self.y0 = Y0
-        self.turn = False
+        self.left = False
         self.jump = False
         self.platform = False
+        self.moving = False
         self.jump_height = 50
         self.jump_count = 0
         self.vx = 5
+        self.ticks = 0
 
     def move(self, x, y):
         """Движение персонажа."""
-        if x < self.x and not self.turn:
-            self.image = pygame.transform.flip(self.image, 1, 0)
-            self.turn = True
-        elif x > self.x and self.turn:
-            self.image = pygame.transform.flip(self.image, 1, 0)
-            self.turn = False
+        self.moving = True
+        if x < self.x and not self.left:
+            self.left = True
+        elif x > self.x:
+            self.left = False
 
         if 6114 >= x >= 0:
             self.x = x
@@ -182,7 +156,6 @@ class Hero(pygame.sprite.Sprite):
                 self.y0 = 530
             else:
                 self.y0 = Y0
-                now_screen = GAME_OVER
 
         if self.jump and self.jump_count + 3 < self.jump_height:
             self.rect.y -= 3
@@ -194,6 +167,17 @@ class Hero(pygame.sprite.Sprite):
         else:
             self.jump = False
             self.jump_count = 0
+
+        if self.moving and self.ticks % 60 == 0:
+            self.image = PLAYER_IMGS[self.img_count]
+            self.img_count = (self.img_count + 1) % 2
+            self.moving = False
+        else:
+            self.image = PLAYER_IMGS[2]
+        self.ticks = (self.ticks + 1) % 120
+
+        if self.left:
+            self.image = pygame.transform.flip(self.image, 1, 0)
 
 
 class Button(pygame.sprite.Sprite):
@@ -258,7 +242,9 @@ BACKGROUND = load_image('background.png')
 CLOUD_IMGS = [load_image('cloud1.png', (95, 205, 228)), load_image('cloud2.png', (95, 205, 228)),
               load_image('cloud3.png', (95, 205, 228))]
 PLATF_IMG = pygame.transform.scale(load_image('platform.png', (95, 205, 228)), (54, 16))
-PLAYER_IMG = pygame.transform.scale(load_image('knight.png'), (30, 80))
+PLAYER_IMGS = [pygame.transform.scale(load_image('knight1.png'), (30, 80)),
+               pygame.transform.scale(load_image('knight2.png'), (30, 80)),
+               pygame.transform.scale(load_image('knight.png'), (30, 80))]
 
 # Загрузка звуков и музыки.
 load_sound(0, 'title_menu_music.mp3')
@@ -301,7 +287,8 @@ game_over_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 hero = Hero(hero_group, 5, 445)
 
 # Экраны.
-SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc, GAME_OVER: game_over_sc}
+SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc,
+           GAME_OVER: game_over_sc}
 
 # Инициализация кнопок и объединение их в группы.
 for i in range(3):
@@ -425,9 +412,7 @@ while running:
         hero_group.update()
         level.update()
         clouds.update()
-        ticks += 1
-        if ticks > 75:
-            ticks = 0
+        ticks = (ticks + 1) % 75
 
     # Обновление экрана
     screen.blit(SCREENS[now_screen], (0, 0))
