@@ -6,6 +6,15 @@ import random
 pygame.init()
 
 
+def escape():
+    """Функция выхода с уровня."""
+    global now_screen
+    pygame.mouse.set_visible(True)
+    now_screen = LVL_CH_SCREEN
+    now_level.kill()
+    hero.kill()
+
+
 def terminate():
     """Выход из игры"""
 
@@ -46,6 +55,37 @@ def load_image(name, colorkey=None):
     else:
         image = image.convert_alpha()
     return image
+
+
+class Monster(pygame.sprite.Sprite):
+    def __init__(self, x, dmg, health, d):
+        super().__init__(enemies, all_sprites)
+        self.image = random.choice(MNSTR_IMGS)
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = x, Y0 + hero.rect.height - self.rect.height
+        self.x0 = x
+        self.vx = 1
+        self.dmg = dmg
+        self.health = health
+        self.range = d
+        self.right = True
+        self.ticks = 0
+
+    def update(self):
+        collider = pygame.sprite.spritecollideany(self, hero_group)
+        if not collider:
+            if self.right and self.x0 + self.range > self.rect.x:
+                self.rect.x += self.vx
+            else:
+                self.right = False
+
+            if not self.right and self.rect.x > self.x0:
+                self.rect.x -= self.vx
+            else:
+                self.right = True
+        elif self.ticks % 30 == 0:
+            collider.health -= self.dmg
+        self.ticks = (self.ticks + 1) % 120
 
 
 class Platform(pygame.sprite.Sprite):
@@ -104,11 +144,15 @@ class Level(pygame.sprite.Sprite):
         for pl in self.platforms:
             pl.rect.x = pl.pos0[0] + self.rect.x
 
+        for en in self.enemies:
+            en.rect.x -= self.diff
+            en.x0 -= self.diff
+
 
 class Hero(pygame.sprite.Sprite):
     """Класс главного героя. Принимает координаты."""
 
-    def __init__(self, group, x, y):
+    def __init__(self, group, x, y, dmg, health):
         """Инициализация персонажа"""
         super().__init__(group)
         self.image = PLAYER_IMGS[2]
@@ -116,6 +160,7 @@ class Hero(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = x, y
         self.x = x
+        self.safe_x = (self.x, self.rect.x)
         self.y0 = Y0
         self.left = False
         self.jump = False
@@ -123,8 +168,10 @@ class Hero(pygame.sprite.Sprite):
         self.moving = False
         self.jump_height = 50
         self.jump_count = 0
-        self.vx = 5
+        self.vx = 4
+        self.health = health
         self.ticks = 0
+        self.dmg = dmg
 
     def move(self, x, y):
         """Движение персонажа."""
@@ -141,9 +188,16 @@ class Hero(pygame.sprite.Sprite):
             elif 5489 <= self.x <= 6114:
                 self.rect.x = (self.x + 256) % 1280
 
+        if not pygame.sprite.spritecollideany(self, now_level.platforms) or self.rect.y == self.y0:
+            self.safe_x = (self.x, self.rect.x)
+        else:
+            self.x, self.rect.x = self.safe_x
+
     def update(self):
         """Обновление координат персонажа при взаимодействии с ним."""
-        global now_screen
+        if self.health <= 0:
+            escape()
+
         self.platform = False
         for platform in now_level.platforms:
             if platform.rect.x < self.rect.x + self.rect.width \
@@ -168,16 +222,13 @@ class Hero(pygame.sprite.Sprite):
             self.jump = False
             self.jump_count = 0
 
-        if self.moving and self.ticks % 60 == 0:
-            self.image = PLAYER_IMGS[self.img_count]
+        if self.moving and self.ticks % 10 == 0:
+            self.image = pygame.transform.flip(PLAYER_IMGS[self.img_count], self.left, 0)
             self.img_count = (self.img_count + 1) % 2
             self.moving = False
-        else:
-            self.image = PLAYER_IMGS[2]
+        elif not self.moving:
+            self.image = pygame.transform.flip(PLAYER_IMGS[2], self.left, 0)
         self.ticks = (self.ticks + 1) % 120
-
-        if self.left:
-            self.image = pygame.transform.flip(self.image, 1, 0)
 
 
 class Button(pygame.sprite.Sprite):
@@ -221,15 +272,18 @@ BUTTON_FONT = pygame.font.SysFont('comicsansms', 40, bold=True)
 TITRES_FONT = pygame.font.SysFont('comicsansms', 50)
 MENU_BTN_TITLES = ['НАЧАТЬ ИГРУ', 'О НАС', 'ВЫЙТИ']
 LEVEL_BTN_TITLES = ['Уровень 1', 'Уровень 2', 'Уровень 3']
+
+# Инициализация групп спрайтов.
+all_sprites = pygame.sprite.Group()
 menu_buttons = pygame.sprite.Group()
 level_buttons = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
-all_sprites = pygame.sprite.Group()
 level = pygame.sprite.Group()
 clouds = pygame.sprite.Group()
 platforms = pygame.sprite.Group()
+enemies = pygame.sprite.Group()
 
-# Инициализация экрана, установка оглавление и иконки приложения.
+# Инициализация экрана, установка оглавления и иконки приложения.
 screen = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
 screen_rect = screen.get_rect()
 pygame.display.set_caption('Simple Dungeon')
@@ -245,12 +299,16 @@ PLATF_IMG = pygame.transform.scale(load_image('platform.png', (95, 205, 228)), (
 PLAYER_IMGS = [pygame.transform.scale(load_image('knight1.png'), (30, 80)),
                pygame.transform.scale(load_image('knight2.png'), (30, 80)),
                pygame.transform.scale(load_image('knight.png'), (30, 80))]
+MNSTR_IMGS = [load_image('slime.png')]
 
 # Загрузка звуков и музыки.
 load_sound(0, 'title_menu_music.mp3')
 pygame.mixer_music.set_volume(0.3)
 pygame.mixer_music.play(-1)
 btn_sound = load_sound(1, 'btn_sound.wav')
+
+# Главный герой.
+hero = Hero(hero_group, 5, 445, 30, 100)
 
 # Экран с титрами(О НАС).
 about_screen = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
@@ -276,15 +334,13 @@ l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 5))
 lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 level_x = 0
 now_level = None
-LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [],
+LEVELS = [Level(pygame.transform.scale(load_image('level_1.png'), (6144, 1440)), [Monster(600, 10, 50, 200)],
                 [Platform(2306, 496), Platform(2405, 476), Platform(2497, 454)])]
 ticks = 0
+hero.kill()
 
 # Экран для game over'а.
 game_over_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
-
-# Главный герой.
-hero = Hero(hero_group, 5, 445)
 
 # Экраны.
 SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc,
@@ -371,13 +427,15 @@ while running:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
                     btn_sound.play()
                     pygame.mouse.set_visible(False)
+                    hero = Hero(hero_group, 5, 445, 30, 100)
+                    now_screen = LVL
                     if btn.title == 'Уровень 1':
                         now_level = LEVELS[0]
-                        now_screen = LVL
                     elif btn.title == 'Уровень 2':
                         pass
                     elif btn.title == 'Уровень 3':
                         pass
+                    level.add(now_level)
 
         l_ch_screen.blit(BACKGROUND, (0, 0))
         l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 10))
@@ -392,24 +450,25 @@ while running:
             if event.type == pygame.QUIT:
                 terminate()
             elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
-                pygame.mouse.set_visible(True)
-                now_screen = LVL_CH_SCREEN
+                escape()
 
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP] and hero.rect.y == hero.y0:
+        if (keys[pygame.K_SPACE] or keys[pygame.K_w]) and hero.rect.y == hero.y0:
             hero.jump = True
-        if keys[pygame.K_RIGHT]:
+        if keys[pygame.K_d]:
             hero.move(hero.x + hero.vx, hero.rect.y)
-        if keys[pygame.K_LEFT]:
+        if keys[pygame.K_a]:
             hero.move(hero.x - hero.vx, hero.rect.y)
 
         level.draw(lvl_sc)
         platforms.draw(lvl_sc)
+        enemies.draw(lvl_sc)
         hero_group.draw(lvl_sc)
         if ticks == random.randint(0, 75):
             Cloud()
         clouds.draw(lvl_sc)
         hero_group.update()
+        enemies.update()
         level.update()
         clouds.update()
         ticks = (ticks + 1) % 75
