@@ -506,8 +506,8 @@ LVL_IMGS = [load_image('level_1.png')]
 
 # Загрузка звуков и музыки.
 btn_sound = load_sound(1, 'btn_sound.wav')
-title_mc = 'title_menu_music.mp3'
-level_mc = 'level_music.mp3'
+title_mc = 'title_menu_music.wav'
+level_mc = 'level_music.wav'
 now_music = title_mc
 
 # Главный герой.
@@ -687,8 +687,6 @@ while running:
             hero.move(hero.x + hero.vx, hero.rect.y)
         if keys[pygame.K_a]:
             hero.move(hero.x - hero.vx, hero.rect.y)
-        if keys[pygame.K_TAB]:
-            hero.rect.y -= 100
         if keys[pygame.K_LSHIFT]:
             hero.vx = 5
             hero.freq = 10
