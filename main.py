@@ -6,12 +6,43 @@ import random
 pygame.init()
 
 
+def win():
+    """Функция выигрыша."""
+
+    global now_screen, win_bg
+    win_bg = lvl_sc.copy()
+    now_screen = WIN_SCREEN
+    reset_level()
+
+
+def play_level(num):
+    """Функция запуска уровня."""
+
+    global now_level, now_screen
+    if num == 0:
+        now_level = LEVELS[num]
+        now_screen = LVL
+        pygame.mouse.set_visible(False)
+
+
 def pause():
     """Функция для паузы игры."""
 
     global now_screen, pause_bg
+    pygame.mouse.set_visible(True)
     now_screen = PAUSE_SCREEN
     pause_bg = lvl_sc.copy()
+
+
+def play_music(name, volume):
+    """Функция проигрывания музыки."""
+
+    global now_music
+    if not pygame.mixer_music.get_busy() or name != now_music:
+        load_sound(0, name)
+        pygame.mixer_music.play(-1)
+        pygame.mixer_music.set_volume(volume)
+        now_music = name
 
 
 def game_over():
@@ -39,7 +70,7 @@ def terminate():
 
 
 def load_sound(type, name):
-    """Загружает звук или музыку. Использует type для определения типа(музыка, звук)."""
+    """Загружает звук или музыку."""
 
     fullname = os.path.join('sounds', name)
     sound = None
@@ -77,14 +108,16 @@ def load_image(name, colorkey=None):
 class Monster(pygame.sprite.Sprite):
     """Класс монстра. Принимает значения координаты, атаки, здоровья."""
 
-    def __init__(self, x, dmg, health, d):
+    def __init__(self, x, dmg, health, d, img):
         """Инициализация монстра."""
 
         super().__init__(monsters, all_sprites)
-        self.image = random.choice(MNSTR_IMGS)
+        self.image = img
+        self.image0 = img
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = x, Y0 + hero.rect.height - self.rect.height
         self.x0 = x
+        self.X0 = x
         self.vx = 1
         self.death_vy = 2
         self.dmg = dmg
@@ -115,11 +148,15 @@ class Monster(pygame.sprite.Sprite):
                     self.right = True
             elif self.ticks % 30 == 0:
                 collider.health -= self.dmg
+            self.image = pygame.transform.flip(self.image0, not self.right, 0)
             self.ticks = (self.ticks + 1) % 120
 
     def reset(self):
+        """Сброс монстра."""
+
         self.health = self.full_health
-        self.rect.x = self.x0
+        self.rect.x, self.rect.y = self.X0, Y0 + hero.rect.height - self.rect.height
+        self.x0 = self.X0
         self.right = True
         self.ticks = 0
 
@@ -134,7 +171,46 @@ class Platform(pygame.sprite.Sprite):
         self.image = PLATF_IMG
         self.rect = self.image.get_rect()
         self.pos0 = (x, y)
+        self.x0 = 0
         self.rect.x, self.rect.y = x, y
+
+    def reset(self):
+        """Сброс платформы."""
+
+        self.rect.x = self.pos0[0]
+
+
+class MovingPlatform(Platform):
+    """Класс двигающейся платформы."""
+
+    def __init__(self, x, y, range):
+        """Инициализация платформы."""
+
+        super().__init__(x, y)
+        self.range = range
+        self.right = True
+        self.x0 = x
+        self.X0 = x
+        self.vx = 1
+
+    def update(self):
+        """Движение платформы."""
+
+        if self.right and self.x0 + self.range > self.rect.x:
+            self.rect.x += self.vx
+        else:
+            self.right = False
+
+        if not self.right and self.rect.x > self.x0:
+            self.rect.x -= self.vx
+        else:
+            self.right = True
+
+    def reset(self):
+        """Сброс платформы."""
+
+        self.x0 = self.X0
+        self.rect.x = self.pos0[0]
 
 
 class Cloud(pygame.sprite.Sprite):
@@ -183,7 +259,8 @@ class Level(pygame.sprite.Sprite):
             self.diff = 0
 
         for pl in self.platforms:
-            pl.rect.x = pl.pos0[0] + self.rect.x
+            pl.rect.x -= self.diff
+            pl.x0 -= self.diff
 
         for en in self.enemies:
             en.rect.x -= self.diff
@@ -196,6 +273,8 @@ class Level(pygame.sprite.Sprite):
         self.rect.x = 0
         for enemy in self.enemies:
             enemy.reset()
+        for pl in self.platforms:
+            pl.reset()
 
 
 class Hero(pygame.sprite.Sprite):
@@ -213,18 +292,22 @@ class Hero(pygame.sprite.Sprite):
         self.pos0 = (x, y)
         self.safe_x = (self.x, self.rect.x)
         self.y0 = Y0
+        self.attack = False
         self.left = False
         self.jump = False
         self.platform = False
         self.moving = False
-        self.jump_height = 50
+        self.jump_height = 60
         self.jump_count = 0
         self.vx = 4
         self.full_health = health
         self.health = health
         self.freq = 15
         self.ticks = 0
+        self.angle = 0
         self.dmg = dmg
+        self.hole = False
+        self.hole_coords = ()
 
     def move(self, x, y):
         """Движение персонажа."""
@@ -235,71 +318,94 @@ class Hero(pygame.sprite.Sprite):
         elif x > self.x:
             self.left = False
 
-        if 6114 >= x >= 0:
+        if not pygame.sprite.spritecollideany(self, now_level.platforms):
+            self.safe_x = (self.x, self.rect.x)
+
+        if 6114 >= x >= 0 and (
+                (self.rect.y > Y0 and self.hole_coords[0] < x < self.hole_coords[1]) or self.rect.y <= Y0):
             self.x = x
             if 0 <= self.x <= 625:
                 self.rect.x = self.x
             elif 5489 <= self.x <= 6114:
                 self.rect.x = (self.x + 256) % 1280
 
-        if not pygame.sprite.spritecollideany(self, now_level.platforms) or self.rect.y == self.y0:
-            self.safe_x = (self.x, self.rect.x)
-        else:
+        if pygame.sprite.spritecollideany(self, now_level.platforms):
             self.x, self.rect.x = self.safe_x
+
+        print(self.x)
 
     def update(self):
         """Обновление координат персонажа при взаимодействии с ним."""
 
-        if self.health <= 0 or self.rect.y == 530:
-            game_over()
+        if self.health <= 0 or self.rect.y >= 530:
+            self.death()
+        elif self.x >= 6000:
+            win()
+        else:
+            self.platform = False
+            for platform in now_level.platforms:
+                if platform.rect.x < self.rect.x + self.rect.width \
+                        and platform.rect.x + platform.rect.width > self.rect.x \
+                        and self.rect.y + self.rect.height <= platform.rect.y:
+                    self.y0 = platform.rect.y - self.rect.height
+                    self.platform = True
 
-        self.platform = False
-        for platform in now_level.platforms:
-            if platform.rect.x < self.rect.x + self.rect.width \
-                    and platform.rect.x + platform.rect.width > self.rect.x \
-                    and self.rect.y + self.rect.height <= platform.rect.y:
-                self.y0 = platform.rect.y - self.rect.height
-                self.platform = True
-        if not self.platform:
-            if 2280 < self.x < 2550:
-                self.y0 = 530
-            else:
+            self.hole = False
+            for i, j in HOLES_COORD:
+                if i < self.x < j:
+                    if not self.platform:
+                        self.y0 = 530
+                    self.hole_coords = (i, j)
+                    self.hole = True
+                    break
+
+            if not self.platform and not self.hole:
                 self.y0 = Y0
 
-        if self.jump and self.jump_count + 3 < self.jump_height:
-            self.rect.y -= 3
-            self.jump_count += 3
-        elif not self.jump and self.rect.y <= self.y0 - 3:
-            self.rect.y += 3
-            if self.y0 - self.rect.y < 3:
-                self.rect.y = self.y0
-        else:
-            self.jump = False
-            self.jump_count = 0
+            if self.jump and self.jump_count + 3 < self.jump_height:
+                self.rect.y -= 3
+                self.jump_count += 3
+            elif not self.jump and self.rect.y <= self.y0 - 3:
+                self.rect.y += 3
+                if self.y0 - self.rect.y < 3:
+                    self.rect.y = self.y0
+            else:
+                self.jump = False
+                self.jump_count = 0
 
-        if self.moving and self.ticks % self.freq == 0:
-            self.image = pygame.transform.flip(PLAYER_IMGS[self.img_count], self.left, 0)
-            self.img_count = (self.img_count + 1) % 2
+            if self.ticks % self.freq == 0:
+                if self.attack:
+                    enemy = pygame.sprite.spritecollideany(self, now_level.enemies)
+                    if enemy:
+                        enemy.health -= self.dmg
+                    self.image = pygame.transform.flip(PLAYER_IMGS[self.img_count + 2], self.left, 0)
+                    self.img_count = (self.img_count + 1) % 2
+                elif not self.attack and self.moving:
+                    self.image = pygame.transform.flip(PLAYER_IMGS[self.img_count], self.left, 0)
+                    self.img_count = (self.img_count + 1) % 2
+            if not self.moving and not self.attack:
+                self.image = pygame.transform.flip(PLAYER_IMGS[2], self.left, 0)
+            self.attack = False
             self.moving = False
-        elif not self.moving:
-            self.image = pygame.transform.flip(PLAYER_IMGS[2], self.left, 0)
-        self.ticks = (self.ticks + 1) % 120
+            self.ticks = (self.ticks + 1) % 120
 
-    def attack(self):
-        """Функция атаки персонажа."""
+    def death(self):
+        """Смерть персонажа."""
 
-        enemy = pygame.sprite.spritecollideany(self, now_level.enemies)
-        if enemy and self.ticks % self.freq == 0:
-            enemy.health -= self.dmg
-        if self.ticks % (self.freq // 2) == 0:
-            self.image = pygame.transform.flip(PLAYER_IMGS[self.img_count + 2], self.left, 0)
-            self.img_count = (self.img_count + 1) % 2
-        self.ticks = (self.ticks + 1) % 120
+        if self.angle < 90:
+            self.angle += 2
+            self.image = pygame.transform.rotate(PLAYER_IMGS[2], self.angle)
+            self.rect.y += 1
+        else:
+            game_over()
 
     def reset(self):
         """Сброс персонажа."""
 
+        self.hole = False
         self.ticks = 0
+        self.freq = 15
+        self.angle = 0
         self.jump_count = 0
         self.y0 = Y0
         self.rect.x, self.rect.y = self.pos0
@@ -349,6 +455,7 @@ LVL_CH_SCREEN = 'level_choice_screen'
 LVL = 'level_screen'
 GAME_OVER = 'game_over'
 PAUSE_SCREEN = 'pause_screen'
+WIN_SCREEN = 'win_screen'
 now_screen = MENU_SCREEN
 with open('sources/titres.txt', encoding='utf-8') as f:
     TITRES_TEXT = [i.strip() for i in f.readlines()]
@@ -357,12 +464,19 @@ TITRES_FONT = pygame.font.SysFont('comicsansms', 50)
 MENU_BTN_TITLES = ['НАЧАТЬ ИГРУ', 'О НАС', 'ВЫЙТИ']
 LEVEL_BTN_TITLES = ['Уровень 1', 'Уровень 2', 'Уровень 3']
 PAUSE_BTN_TITLES = ['ПРОДОЛЖИТЬ', 'В ГЛАВНОЕ МЕНЮ']
+GAME_OVER_BTN_TITLES = ['ИГРАТЬ ЗАНОВО', 'В ГЛАВНОЕ МЕНЮ']
+WIN_BTN_TITLES = ['СЛЕДУЮЩИЙ УРОВЕНЬ', 'В ГЛАВНОЕ МЕНЮ']
+HOLES_COORD = [(535, 685), (1095, 1125), (1280, 1530), (2190, 2540),
+               (3130, 3385), (3930, 3960), (4235, 4485),
+               (4855, 4885)]
 
 # Инициализация групп спрайтов.
 all_sprites = pygame.sprite.Group()
 pause_buttons = pygame.sprite.Group()
 menu_buttons = pygame.sprite.Group()
 level_buttons = pygame.sprite.Group()
+win_buttons = pygame.sprite.Group()
+game_over_buttons = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
 level = pygame.sprite.Group()
 clouds = pygame.sprite.Group()
@@ -385,12 +499,16 @@ PLATF_IMG = pygame.transform.scale(load_image('platform.png', (95, 205, 228)), (
 PLAYER_IMGS = [pygame.transform.scale(load_image('knight1.png'), (30, 80)),
                pygame.transform.scale(load_image('knight2.png'), (30, 80)),
                pygame.transform.scale(load_image('knight.png'), (30, 80)),
-               pygame.transform.scale(load_image('slime.png'), (30, 80))]
-MNSTR_IMGS = [load_image('slime.png')]
+               pygame.transform.scale(load_image('knight3.png'), (42, 80))]
+MNSTR_IMGS = [load_image('slime.png'), pygame.transform.scale(load_image('boss.png', (255, 255, 255)), (50, 80)),
+              pygame.transform.scale(load_image('ghost.png'), (30, 60))]
 LVL_IMGS = [load_image('level_1.png')]
 
 # Загрузка звуков и музыки.
 btn_sound = load_sound(1, 'btn_sound.wav')
+title_mc = 'title_menu_music.mp3'
+level_mc = 'level_music.mp3'
+now_music = title_mc
 
 # Главный герой.
 hero = Hero(hero_group, 5, 445, 30, 100)
@@ -414,33 +532,47 @@ LVL_CH_TITLE = pygame.font.SysFont('comicsansms', 120, bold=True).render('Выб
 lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 level_x = 0
 now_level = None
-LEVELS = [Level(pygame.transform.scale(LVL_IMGS[0], (6144, 1440)), [Monster(710, 10, 50, 200)],
-                [Platform(2306, 496), Platform(2405, 476), Platform(2497, 454)])]
+level_num = None
+LEVELS = [Level(pygame.transform.scale(LVL_IMGS[0], (6144, 1440)),
+                [Monster(710, 10, 50, 200, MNSTR_IMGS[0]), Monster(1600, 20, 70, 350, MNSTR_IMGS[1]),
+                 Monster(2755, 30, 80, 250, MNSTR_IMGS[2])],
+                [Platform(552, 496), Platform(650, 476),
+                 Platform(1296, 496), Platform(1394, 476), Platform(1488, 454),
+                 Platform(2214, 486), Platform(2306, 454), Platform(2404, 476), Platform(2500, 454),
+                 MovingPlatform(3163, 476, 190),
+                 Platform(4250, 496), Platform(4348, 476), Platform(4444, 496)])]
 ticks = 0
 
 # Экран для game over'а.
 game_over_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
-game_over_sc.set_alpha(150)
 game_over_bg = LVL_IMGS[0]
 fog = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
 fog.fill((0, 0, 0))
 fog.set_alpha(150)
 GAME_OVER_TITLE = pygame.font.SysFont('comicsansms', 180, bold=True).render('GAME OVER', 1, pygame.Color('white'))
-game_over_txt = pygame.font.SysFont('comicsansms', 50).render('Нажмите любую клавишу', 1, pygame.Color('white'))
 
 # Экран паузы.
 pause_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
+pause_bg = LVL_IMGS[0]
+PAUSE_TITLE = pygame.font.SysFont('comicsansms', 180, bold=True).render('ПАУЗА', 1, pygame.Color('darkgrey'))
+
+# Экран выигрыша.
+win_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
+win_bg = LVL_IMGS[0]
+WIN_TITLE = pygame.font.SysFont('comicsansms', 150, bold=True).render('ВЫ ПОБЕДИЛИ', 1, pygame.Color('darkblue'))
 
 # Экраны.
 SCREENS = {MENU_SCREEN: menu_screen, ABOUT_SCREEN: about_screen, LVL_CH_SCREEN: l_ch_screen, LVL: lvl_sc,
-           GAME_OVER: game_over_sc, PAUSE_SCREEN: pause_sc}
+           GAME_OVER: game_over_sc, PAUSE_SCREEN: pause_sc, WIN_SCREEN: win_sc}
 
 # Инициализация кнопок и объединение их в группы.
 for i in range(3):
     Button(menu_screen, menu_buttons, i * 150 + 250, MENU_BTN_TITLES[i], pygame.Color('white'))
     Button(l_ch_screen, level_buttons, i * 150 + 250, LEVEL_BTN_TITLES[i], pygame.Color('black'))
     if i < 2:
-        Button(pause_sc, pause_buttons, i * 150 + 300, PAUSE_BTN_TITLES[i], pygame.Color('grey'))
+        Button(pause_sc, pause_buttons, i * 150 + 350, PAUSE_BTN_TITLES[i], pygame.Color('grey'))
+        Button(game_over_sc, game_over_buttons, i * 150 + 350, GAME_OVER_BTN_TITLES[i], pygame.Color('white'))
+        Button(win_sc, win_buttons, i * 150 + 350, WIN_BTN_TITLES[i], pygame.Color('black'))
 
 # Флаги.
 running = True
@@ -451,12 +583,15 @@ while running:
     # Код для главного меню игры.
     if now_screen == MENU_SCREEN:
 
-        pygame.mixer_music.unpause()
+        play_music(title_mc, 0.3)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                terminate()
+
             for btn in menu_buttons:
-                if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
+                if (event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos)) \
+                        or (event.type == pygame.KEYUP and event.key == pygame.K_SPACE
+                            and btn.rect.collidepoint(pygame.mouse.get_pos())):
                     btn_sound.play()
                     if btn.title == 'ВЫЙТИ':
                         terminate()
@@ -483,10 +618,10 @@ while running:
     # Код для экрана с титрами.
     elif now_screen == ABOUT_SCREEN:
 
-        pygame.mixer_music.unpause()
+        play_music(title_mc, 0.3)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                terminate()
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 5:
                     titre_y -= 30
@@ -505,27 +640,29 @@ while running:
             text_y += text.get_height()
         titre_y -= 1
 
-    # Код для экрана выбора уровня
+    # Код для экрана выбора уровня.
     elif now_screen == LVL_CH_SCREEN:
 
-        pygame.mixer_music.unpause()
+        play_music(title_mc, 0.3)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminate()
             elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
+                btn_sound.play()
                 now_screen = MENU_SCREEN
+
             for btn in level_buttons:
-                if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos):
+                if (event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos)) \
+                        or (event.type == pygame.KEYUP and event.key == pygame.K_SPACE
+                            and btn.rect.collidepoint(pygame.mouse.get_pos())):
                     btn_sound.play()
                     if btn.title == 'Уровень 1':
-                        now_level = LEVELS[0]
-                        pygame.mouse.set_visible(False)
-                        now_screen = LVL
+                        level_num = 0
                     elif btn.title == 'Уровень 2':
-                        pass
+                        level_num = 1
                     elif btn.title == 'Уровень 3':
-                        pass
-                    level.add(now_level)
+                        level_num = 2
+                    play_level(level_num)
 
         l_ch_screen.blit(BACKGROUND, (0, 0))
         l_ch_screen.blit(LVL_CH_TITLE, ((WIN_WIDTH - LVL_CH_TITLE.get_width()) // 2, 10))
@@ -535,11 +672,12 @@ while running:
     # Код для уровней.
     elif now_screen == LVL:
 
-        pygame.mixer_music.pause()
+        play_music(level_mc, 0.3)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminate()
             elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
+                btn_sound.play()
                 pause()
 
         keys = pygame.key.get_pressed()
@@ -557,8 +695,7 @@ while running:
         else:
             hero.vx = 3
             hero.freq = 15
-        if keys[pygame.K_w] and not(keys[pygame.K_d] or keys[pygame.K_a]):
-            hero.attack()
+        hero.attack = True if keys[pygame.K_w] else False
 
         level.draw(lvl_sc)
         now_level.platforms.draw(lvl_sc)
@@ -569,6 +706,7 @@ while running:
         clouds.draw(lvl_sc)
         hero_group.update()
         now_level.enemies.update()
+        now_level.platforms.update()
         level.update()
         clouds.update()
         ticks = (ticks + 1) % 75
@@ -580,14 +718,74 @@ while running:
             if event.type == pygame.QUIT:
                 terminate()
             elif event.type in [pygame.MOUSEBUTTONUP, pygame.KEYUP]:
+                btn_sound.play()
                 now_screen = MENU_SCREEN
+
+            for btn in game_over_buttons:
+                if (event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos)) \
+                        or (event.type == pygame.KEYUP and event.key == pygame.K_SPACE
+                            and btn.rect.collidepoint(pygame.mouse.get_pos())):
+                    btn_sound.play()
+                    if btn.title == 'ИГРАТЬ ЗАНОВО':
+                        play_level(level_num)
+                    elif btn.title == 'В ГЛАВНОЕ МЕНЮ':
+                        now_screen = MENU_SCREEN
 
         game_over_sc.blit(game_over_bg, (0, 0))
         game_over_sc.blit(fog, (0, 0))
         game_over_sc.blit(GAME_OVER_TITLE, ((WIN_WIDTH - GAME_OVER_TITLE.get_width()) // 2, 80))
-        game_over_sc.blit(game_over_txt, ((WIN_WIDTH - game_over_txt.get_width()) // 2, 300))
+        game_over_buttons.draw(game_over_sc)
+        game_over_buttons.update()
 
-    # Обновление экрана
+    # Код для меню паузы.
+    elif now_screen == PAUSE_SCREEN:
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+            elif event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
+                btn_sound.play()
+                play_level(level_num)
+
+            for btn in pause_buttons:
+                if (event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos)) \
+                        or (event.type == pygame.KEYUP and event.key == pygame.K_SPACE
+                            and btn.rect.collidepoint(pygame.mouse.get_pos())):
+                    btn_sound.play()
+                    if btn.title == 'ПРОДОЛЖИТЬ':
+                        now_screen = LVL
+                    elif btn.title == 'В ГЛАВНОЕ МЕНЮ':
+                        now_screen = MENU_SCREEN
+                        reset_level()
+
+        pause_sc.blit(pause_bg, (0, 0))
+        pause_sc.blit(PAUSE_TITLE, ((WIN_WIDTH - PAUSE_TITLE.get_width()) // 2, 80))
+        pause_buttons.draw(pause_sc)
+        pause_buttons.update()
+
+    # Код для выигрыша.
+    elif now_screen == WIN_SCREEN:
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+
+            for btn in pause_buttons:
+                if (event.type == pygame.MOUSEBUTTONUP and event.button == 1 and btn.rect.collidepoint(event.pos)) \
+                        or (event.type == pygame.KEYUP and event.key == pygame.K_SPACE
+                            and btn.rect.collidepoint(pygame.mouse.get_pos())):
+                    btn_sound.play()
+                    if btn.title == 'СЛЕДУЮЩИЙ УРОВЕНЬ':
+                        pass
+                    elif btn.title == 'В ГЛАВНОЕ МЕНЮ':
+                        now_screen = MENU_SCREEN
+
+        win_sc.blit(win_bg, (0, 0))
+        win_sc.blit(WIN_TITLE, ((WIN_WIDTH - WIN_TITLE.get_width()) // 2, 80))
+        win_buttons.draw(win_sc)
+        win_buttons.update()
+
+    # Обновление экрана.
     screen.blit(SCREENS[now_screen], (0, 0))
     pygame.display.flip()
     clock.tick(FPS)
