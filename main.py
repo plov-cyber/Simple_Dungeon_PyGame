@@ -146,7 +146,7 @@ class Monster(pygame.sprite.Sprite):
                     self.rect.x -= self.vx
                 else:
                     self.right = True
-            elif self.ticks % 30 == 0:
+            elif self.ticks % 20 == 0:
                 collider.health -= self.dmg
             self.image = pygame.transform.flip(self.image0, not self.right, 0)
             self.ticks = (self.ticks + 1) % 120
@@ -332,8 +332,6 @@ class Hero(pygame.sprite.Sprite):
         if pygame.sprite.spritecollideany(self, now_level.platforms):
             self.x, self.rect.x = self.safe_x
 
-        print(self.x)
-
     def update(self):
         """Обновление координат персонажа при взаимодействии с ним."""
 
@@ -444,6 +442,46 @@ class Button(pygame.sprite.Sprite):
                                      self.rect.y + (self.rect.height - self.text.get_height()) // 2))
 
 
+class Health(pygame.sprite.Sprite):
+    """Класс шкалы здоровья игрока."""
+
+    def __init__(self, x, y, screen, img, color):
+        """Инициализация спрайта."""
+
+        super().__init__(heart_group)
+        self.color = color
+        self.screen = screen
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = x, y
+
+    def update(self):
+        """Обновление шкалы здоровья."""
+
+        if self.color == (255, 0, 0):
+            self.screen.blit(self.image, (self.rect.x, self.rect.y))
+            pygame.draw.rect(self.screen, self.color,
+                             (self.rect.x + self.rect.width + 10, self.rect.y + self.rect.height // 4, hero.full_health * 2,
+                              self.rect.height // 2), 1)
+
+            if hero.health >= 0:
+                pygame.draw.rect(self.screen, self.color,
+                                 (self.rect.x + self.rect.width + 10, self.rect.y + self.rect.height // 4, hero.health * 2,
+                                  self.rect.height // 2))
+
+        collider = pygame.sprite.spritecollideany(hero, now_level.enemies)
+        if collider and self.color == (0, 0, 0):
+            self.screen.blit(self.image, (self.rect.x, self.rect.y))
+            pygame.draw.rect(self.screen, self.color,
+                             (self.rect.x - 10 - collider.full_health * 2, self.rect.y + self.rect.height // 4,
+                              collider.full_health * 2,
+                              self.rect.height // 2), 1)
+            if collider.health >= 0:
+                pygame.draw.rect(self.screen, self.color, (
+                    self.rect.x - 10 - collider.health * 2, self.rect.y + self.rect.height // 4, collider.health * 2,
+                    self.rect.height // 2))
+
+
 # Константы.
 WIN_WIDTH = 1280
 WIN_HEIGHT = 720
@@ -478,6 +516,7 @@ level_buttons = pygame.sprite.Group()
 win_buttons = pygame.sprite.Group()
 game_over_buttons = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
+heart_group = pygame.sprite.Group()
 level = pygame.sprite.Group()
 clouds = pygame.sprite.Group()
 platforms = pygame.sprite.Group()
@@ -503,6 +542,8 @@ PLAYER_IMGS = [pygame.transform.scale(load_image('knight1.png'), (30, 80)),
 MNSTR_IMGS = [load_image('slime.png'), pygame.transform.scale(load_image('boss.png', (255, 255, 255)), (50, 80)),
               pygame.transform.scale(load_image('ghost.png'), (30, 60))]
 LVL_IMGS = [load_image('level_1.png')]
+HEART_IMGS = [pygame.transform.scale(load_image('heart.png'), (80, 80)),
+              pygame.transform.scale(load_image('bl_heart.png'), (80, 80))]
 
 # Загрузка звуков и музыки.
 btn_sound = load_sound(1, 'btn_sound.wav')
@@ -530,12 +571,14 @@ LVL_CH_TITLE = pygame.font.SysFont('comicsansms', 120, bold=True).render('Выб
 
 # Уровень.
 lvl_sc = pygame.Surface((WIN_WIDTH, WIN_HEIGHT))
+heart = Health(10, 10, lvl_sc, HEART_IMGS[0], (255, 0, 0))
+bl_heart = Health(1190, 10, lvl_sc, HEART_IMGS[1], (0, 0, 0))
 level_x = 0
 now_level = None
 level_num = None
 LEVELS = [Level(pygame.transform.scale(LVL_IMGS[0], (6144, 1440)),
-                [Monster(710, 10, 50, 200, MNSTR_IMGS[0]), Monster(1600, 20, 70, 350, MNSTR_IMGS[1]),
-                 Monster(2755, 30, 80, 250, MNSTR_IMGS[2])],
+                [Monster(710, 20, 50, 200, MNSTR_IMGS[0]), Monster(1600, 30, 100, 350, MNSTR_IMGS[1]),
+                 Monster(2755, 40, 150, 250, MNSTR_IMGS[2])],
                 [Platform(552, 496), Platform(650, 476),
                  Platform(1296, 496), Platform(1394, 476), Platform(1488, 454),
                  Platform(2214, 486), Platform(2306, 454), Platform(2404, 476), Platform(2500, 454),
@@ -702,6 +745,7 @@ while running:
         if ticks == random.randint(0, 75):
             Cloud()
         clouds.draw(lvl_sc)
+        heart_group.update()
         hero_group.update()
         now_level.enemies.update()
         now_level.platforms.update()
